@@ -1,0 +1,28 @@
+# Python
+*.pyc
+__pycache__/
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Arquivos temporários
+uploads/
+temp_certificates/
+*.pdf
+*.zip
+*.xlsx
+*.xls
+
+# Sistema
+.DS_Store
+Thumbs.db
+.env
+.vscode/
+.idea/
+
+# Logs
+*.log
