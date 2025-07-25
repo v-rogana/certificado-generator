@@ -182,11 +182,6 @@
             transform: none;
         }
         
-        .btn-secondary {
-            background: #6c757d;
-            margin-left: 10px;
-        }
-        
         .info-box {
             background: #f8f9fa;
             border-left: 4px solid #667eea;
@@ -226,13 +221,18 @@
             width: 100%;
             border-collapse: collapse;
             margin-top: 10px;
+            font-size: 14px;
         }
         
         .preview-table th,
         .preview-table td {
-            padding: 10px;
+            padding: 8px;
             border: 1px solid #dee2e6;
             text-align: left;
+            max-width: 200px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
         }
         
         .preview-table th {
@@ -296,7 +296,7 @@
         
         <div class="tabs">
             <div class="tab active" onclick="switchTab('formulario')">
-                Formulário de Presença
+                Certificados por Presença
             </div>
             <div class="tab" onclick="switchTab('personalizado')">
                 Certificados Personalizados
@@ -369,7 +369,7 @@
                     <h3>✏️ Como funciona:</h3>
                     <ul>
                         <li>Faça upload de um arquivo Excel com os nomes</li>
-                        <li>Defina o texto do certificado para todos ou use uma coluna específica</li>
+                        <li>Defina o texto do certificado para todos</li>
                         <li>Personalize data e local de emissão</li>
                         <li>Gera um certificado para cada linha do Excel</li>
                     </ul>
@@ -400,17 +400,10 @@
                     
                     <div class="form-group">
                         <label for="texto-certificado">Texto do Certificado *</label>
-                        <textarea id="texto-certificado" name="texto_certificado" required placeholder="Ex: Participou do workshop de {nome} realizado no dia...">{nome} participou do evento com aproveitamento satisfatório.</textarea>
+                        <textarea id="texto-certificado" name="texto_certificado" required placeholder="Ex: participou do workshop realizado no dia...">{nome} participou do evento realizado pela Associação Allos, demonstrando excelente desempenho e comprometimento com as atividades propostas.</textarea>
                         <div class="placeholder-info">
                             💡 Use {nome} para inserir o nome do participante automaticamente
                         </div>
-                    </div>
-                    
-                    <div class="form-group">
-                        <label for="coluna-texto">Coluna com Texto Personalizado (opcional)</label>
-                        <select id="coluna-texto" name="coluna_texto">
-                            <option value="">Usar texto padrão acima</option>
-                        </select>
                     </div>
                     
                     <div class="form-group">
@@ -497,15 +490,12 @@
             const previewSection = document.getElementById('preview-section');
             const previewContent = document.getElementById('preview-content');
             const colunaSelect = document.getElementById('coluna-nome');
-            const textoSelect = document.getElementById('coluna-texto');
             
-            // Limpar e preencher selects
+            // Limpar e preencher select
             colunaSelect.innerHTML = '<option value="">Usar primeira coluna</option>';
-            textoSelect.innerHTML = '<option value="">Usar texto padrão acima</option>';
             
             data.colunas.forEach(col => {
                 colunaSelect.innerHTML += `<option value="${col}">${col}</option>`;
-                textoSelect.innerHTML += `<option value="${col}">${col}</option>`;
             });
             
             // Criar tabela de preview
@@ -552,7 +542,7 @@
                     const url = window.URL.createObjectURL(blob);
                     const a = document.createElement('a');
                     a.href = url;
-                    a.download = 'certificados.zip';
+                    a.download = 'certificados_presenca.zip';
                     a.click();
                     
                     result.className = 'result';

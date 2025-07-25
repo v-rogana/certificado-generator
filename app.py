@@ -1,218 +1,257 @@
-# app.py
-import os
-import io
-import base64
-import zipfile
-from flask import Flask, render_template, request, jsonify, send_file
+from flask import Flask, render_template, request, send_file, jsonify
 import pandas as pd
-from reportlab.lib.pagesizes import A4, landscape
-from reportlab.pdfgen import canvas
-from reportlab.lib.utils import ImageReader
-from PIL import Image
+from fpdf import FPDF
+import os
+import zipfile
 from datetime import datetime
+import io
+import tempfile
 from werkzeug.utils import secure_filename
 
 app = Flask(__name__)
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max file size
-app.config['UPLOAD_FOLDER'] = 'uploads'
+app.config['UPLOAD_FOLDER'] = tempfile.gettempdir()
 
-# Criar diretórios necessários
-os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
-os.makedirs('temp_certificates', exist_ok=True)
+class PDFCustom(FPDF):
+    def __init__(self, bg_image_path=None):
+        super().__init__('L', 'mm', 'A4')  # Paisagem
+        self.bg_image_path = bg_image_path
+        self.set_auto_page_break(auto=False, margin=0)
 
-class CertificateGenerator:
-    def __init__(self, background_image=None):
-        self.background_image = background_image
-        self.width, self.height = landscape(A4)
-        
-    def generate_certificate(self, nome, texto_certificado, data_local):
-        """Gera um certificado PDF em memória"""
-        buffer = io.BytesIO()
-        c = canvas.Canvas(buffer, pagesize=landscape(A4))
-        
-        # Se houver imagem de fundo
-        if self.background_image:
-            try:
-                img = ImageReader(self.background_image)
-                c.drawImage(img, 0, 0, width=self.width, height=self.height)
-            except:
-                pass
-        
-        # Configurar fonte e desenhar texto
-        # Título
-        c.setFont("Helvetica-Bold", 36)
-        c.drawCentredString(self.width/2, self.height - 100, "CERTIFICADO")
-        
-        # Subtítulo
-        c.setFont("Helvetica", 24)
-        c.drawCentredString(self.width/2, self.height - 150, "Certificamos que")
-        
-        # Nome do participante
-        c.setFont("Helvetica-Bold", 30)
-        c.drawCentredString(self.width/2, self.height - 200, nome)
-        
-        # Texto do certificado
-        c.setFont("Helvetica", 18)
-        # Quebrar texto longo em múltiplas linhas
-        lines = self._wrap_text(texto_certificado, 80)
-        y_position = self.height - 250
-        for line in lines:
-            c.drawCentredString(self.width/2, y_position, line)
-            y_position -= 25
-        
-        # Data e local
-        c.setFont("Helvetica", 16)
-        c.drawRightString(self.width - 50, 100, data_local)
-        
-        # Linha para assinatura
-        c.line(self.width/2 - 150, 150, self.width/2 + 150, 150)
-        c.setFont("Helvetica", 12)
-        c.drawCentredString(self.width/2, 135, "Assinatura")
-        
-        c.save()
-        buffer.seek(0)
-        return buffer
+    def header(self):
+        if self.bg_image_path and os.path.exists(self.bg_image_path):
+            self.image(self.bg_image_path, x=0, y=0, w=self.w, h=self.h)
+
+def processar_participacoes(df):
+    """Processa as participações e conta 2 horas por presença"""
     
-    def _wrap_text(self, text, max_chars):
-        """Quebra texto em linhas menores"""
-        words = text.split()
-        lines = []
-        current_line = []
-        current_length = 0
-        
-        for word in words:
-            if current_length + len(word) + 1 <= max_chars:
-                current_line.append(word)
-                current_length += len(word) + 1
-            else:
-                lines.append(' '.join(current_line))
-                current_line = [word]
-                current_length = len(word)
-        
-        if current_line:
-            lines.append(' '.join(current_line))
-        
-        return lines
-
-def processar_formulario_presenca(df):
-    """Processa dados de presença do formulário"""
-    # Buscar colunas relevantes
-    nome_col = None
-    email_col = None
-    atividade_col = None
+    # Tenta encontrar as colunas corretas de forma mais flexível
+    nome_coluna = None
+    email_coluna = None
+    atividade_coluna = None
     
+    # Procura pelas colunas baseado em palavras-chave
     for col in df.columns:
         col_lower = col.lower()
-        if "nome" in col_lower and "ultimo" in col_lower:
-            nome_col = col
-        elif "e-mail" in col_lower and "certificado" in col_lower:
-            email_col = col
-        elif "atividade" in col_lower and "participou" in col_lower:
-            atividade_col = col
+        
+        # Busca a coluna de nome
+        if any(termo in col_lower for termo in ["nome completo", "name", "participante", "ultimo nome"]):
+            if not nome_coluna:  # Pega a primeira coluna que corresponde
+                nome_coluna = col
+        
+        # Busca a coluna de email
+        elif any(termo in col_lower for termo in ["e-mail", "email", "mail"]):
+            if not email_coluna:
+                email_coluna = col
+        
+        # Busca a coluna de atividade
+        elif any(termo in col_lower for termo in ["atividade", "evento", "workshop", "curso"]):
+            if not atividade_coluna:
+                atividade_coluna = col
     
-    if not all([nome_col, email_col, atividade_col]):
-        # Tentar usar índices como fallback
-        if len(df.columns) >= 9:
-            nome_col = df.columns[6]
-            email_col = df.columns[7]
-            atividade_col = df.columns[8]
-        else:
-            raise ValueError("Estrutura do arquivo não reconhecida")
+    # Se não encontrou, usa as primeiras colunas
+    if not nome_coluna and len(df.columns) > 0:
+        nome_coluna = df.columns[0]
     
-    # Limpar dados
-    df_limpo = df.dropna(subset=[nome_col])
-    df_limpo['Horas'] = 2  # 2 horas por presença
+    if not nome_coluna:
+        raise ValueError("Não foi possível identificar a coluna de nomes")
     
-    # Agrupar por pessoa
-    resumo = df_limpo.groupby(nome_col).agg({
-        'Horas': 'sum',
-        email_col: 'first',
-        atividade_col: lambda x: list(x)
+    # Remove linhas com valores vazios na coluna de nome
+    df_limpo = df.dropna(subset=[nome_coluna])
+    
+    # Adiciona coluna de horas (2 horas por presença)
+    df_limpo['Horas'] = 2
+    
+    # Agrupa por nome e soma as horas
+    resumo = df_limpo.groupby(nome_coluna).agg({
+        'Horas': 'sum'
     }).reset_index()
     
-    resumo.columns = ['Nome', 'Horas_Total', 'Email', 'Atividades']
-    resumo['Atividades_Texto'] = resumo['Atividades'].apply(
-        lambda x: ', '.join(sorted(set(str(a) for a in x if pd.notna(a))))
-    )
+    # Adiciona email e atividades se as colunas existirem
+    if email_coluna and email_coluna in df.columns:
+        emails = df_limpo.groupby(nome_coluna)[email_coluna].first()
+        resumo['Email'] = resumo[nome_coluna].map(emails)
+    
+    if atividade_coluna and atividade_coluna in df.columns:
+        atividades = df_limpo.groupby(nome_coluna)[atividade_coluna].apply(
+            lambda x: ', '.join(sorted(set(str(a) for a in x if pd.notna(a))))
+        )
+        resumo['Atividades'] = resumo[nome_coluna].map(atividades)
+    
+    # Renomeia colunas
+    resumo.rename(columns={nome_coluna: 'Nome', 'Horas': 'Horas_Total'}, inplace=True)
     
     return resumo
+
+def gerar_certificado_presenca(nome, horas, data_inicio, data_fim, local, data_emissao, bg_path=None):
+    """Gera certificado para participação com horas acumuladas"""
+    
+    pdf = PDFCustom(bg_image_path=bg_path)
+    pdf.set_margins(30, 25, 30)
+    pdf.add_page()
+    
+    # Título
+    pdf.set_y(50)
+    pdf.set_font("Times", "", 28)
+    pdf.cell(0, 15, "CERTIFICADO", align="C", ln=True)
+    
+    # Certificamos que
+    pdf.ln(10)
+    pdf.set_font("Times", "", 18)
+    pdf.cell(0, 10, "Certificamos que", align="C", ln=True)
+    
+    # Nome
+    pdf.ln(5)
+    pdf.set_font("Times", "B", 26)
+    pdf.cell(0, 15, nome, align="C", ln=True)
+    
+    # Texto do certificado
+    pdf.ln(10)
+    pdf.set_font("Times", "", 16)
+    
+    periodo = f"no período de {data_inicio} a {data_fim}"
+    texto = f"Participou das atividades realizadas pela Associação Allos {periodo}, "
+    texto += f"com carga horária total de {int(horas)} horas."
+    
+    pdf.multi_cell(0, 10, texto, align="C")
+    
+    # Local e data
+    pdf.ln(20)
+    pdf.set_font("Times", "", 14)
+    pdf.cell(0, 10, f"{local}, {data_emissao}", align="R")
+    
+    return pdf
+
+def gerar_certificado_personalizado(nome, texto, data_local, bg_path=None):
+    """Gera certificado com texto personalizado"""
+    
+    pdf = PDFCustom(bg_image_path=bg_path)
+    pdf.set_margins(30, 25, 30)
+    pdf.add_page()
+    
+    # Título
+    pdf.set_y(50)
+    pdf.set_font("Times", "", 28)
+    pdf.cell(0, 15, "CERTIFICADO", align="C", ln=True)
+    
+    # Certificamos que
+    pdf.ln(10)
+    pdf.set_font("Times", "", 18)
+    pdf.cell(0, 10, "Certificamos que", align="C", ln=True)
+    
+    # Nome
+    pdf.ln(5)
+    pdf.set_font("Times", "B", 26)
+    pdf.cell(0, 15, nome, align="C", ln=True)
+    
+    # Texto personalizado
+    pdf.ln(10)
+    pdf.set_font("Times", "", 16)
+    
+    # Substitui {nome} no texto
+    texto_final = texto.replace("{nome}", nome)
+    pdf.multi_cell(0, 10, texto_final, align="C")
+    
+    # Data e local
+    if data_local:
+        pdf.ln(20)
+        pdf.set_font("Times", "", 14)
+        pdf.cell(0, 10, data_local, align="R")
+    
+    return pdf
 
 @app.route('/')
 def index():
     return render_template('index.html')
 
+@app.route('/preview_excel', methods=['POST'])
+def preview_excel():
+    """Preview das primeiras linhas do Excel"""
+    try:
+        file = request.files['arquivo']
+        df = pd.read_excel(file)
+        
+        # Pega as primeiras 5 linhas
+        preview_data = df.head(5).fillna('').to_dict('records')
+        
+        return jsonify({
+            'colunas': df.columns.tolist(),
+            'preview': preview_data,
+            'total_linhas': len(df)
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 400
+
 @app.route('/gerar_certificados_formulario', methods=['POST'])
 def gerar_certificados_formulario():
+    """Gera certificados baseados em presença (2h por participação)"""
     try:
-        # Receber arquivo
-        file = request.files['arquivo']
-        if not file:
-            return jsonify({'error': 'Nenhum arquivo enviado'}), 400
-        
-        # Dados do formulário
-        data_inicio = request.form.get('data_inicio', '')
-        data_fim = request.form.get('data_fim', '')
+        # Recebe os arquivos e dados
+        arquivo = request.files['arquivo']
+        background = request.files.get('background')
+        data_inicio = request.form['data_inicio']
+        data_fim = request.form['data_fim']
         local = request.form.get('local', 'Belo Horizonte')
-        data_emissao = request.form.get('data_emissao', datetime.now().strftime('%d/%m/%Y'))
+        data_emissao = request.form.get('data_emissao')
         
-        # Processar imagem de fundo se enviada
-        background = None
-        if 'background' in request.files:
-            bg_file = request.files['background']
-            if bg_file and bg_file.filename:
-                background = Image.open(bg_file)
+        # Formata datas
+        data_inicio_fmt = datetime.strptime(data_inicio, '%Y-%m-%d').strftime('%d/%m/%Y')
+        data_fim_fmt = datetime.strptime(data_fim, '%Y-%m-%d').strftime('%d/%m/%Y')
         
-        # Ler Excel
-        df = pd.read_excel(file)
-        resumo = processar_formulario_presenca(df)
+        if data_emissao:
+            data_emissao_fmt = datetime.strptime(data_emissao, '%Y-%m-%d')
+        else:
+            data_emissao_fmt = datetime.now()
         
-        # Gerar certificados
-        certificados = []
-        generator = CertificateGenerator(background)
+        # Formata data de emissão em português
+        meses = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho',
+                 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro']
+        data_emissao_texto = f"{data_emissao_fmt.day} de {meses[data_emissao_fmt.month-1]} de {data_emissao_fmt.year}"
         
-        for _, participante in resumo.iterrows():
-            nome = participante['Nome']
-            horas = participante['Horas_Total']
-            atividades = participante['Atividades_Texto']
-            
-            # Texto do certificado
-            if len(atividades) > 100:
-                texto = f"Participou de atividades de formação ministradas pela Associação Allos, realizadas de {data_inicio} a {data_fim}, totalizando carga horária de {horas} horas."
-            else:
-                texto = f"Participou das seguintes atividades ministradas pela Associação Allos: {atividades}, realizadas de {data_inicio} a {data_fim}, totalizando carga horária de {horas} horas."
-            
-            data_local = f"{local}, {data_emissao}"
-            
-            # Gerar PDF
-            pdf_buffer = generator.generate_certificate(nome, texto, data_local)
-            
-            certificados.append({
-                'nome': nome,
-                'email': participante['Email'],
-                'pdf': pdf_buffer.getvalue()
-            })
+        # Salva background temporariamente se fornecido
+        bg_path = None
+        if background:
+            bg_path = os.path.join(app.config['UPLOAD_FOLDER'], secure_filename(background.filename))
+            background.save(bg_path)
         
-        # Criar arquivo ZIP
+        # Carrega e processa dados
+        df = pd.read_excel(arquivo)
+        resumo = processar_participacoes(df)
+        
+        # Cria arquivo ZIP em memória
         zip_buffer = io.BytesIO()
+        
         with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
-            for cert in certificados:
-                nome_arquivo = f"{cert['nome'].replace(' ', '_')}_certificado.pdf"
-                zip_file.writestr(nome_arquivo, cert['pdf'])
+            for _, participante in resumo.iterrows():
+                nome = participante['Nome']
+                horas = participante['Horas_Total']
+                
+                # Gera o certificado
+                pdf = gerar_certificado_presenca(
+                    nome, horas, data_inicio_fmt, data_fim_fmt, 
+                    local, data_emissao_texto, bg_path
+                )
+                
+                # Salva em memória
+                pdf_buffer = io.BytesIO()
+                pdf_content = pdf.output()
+                pdf_buffer.write(pdf_content)
+                
+                # Adiciona ao ZIP
+                nome_arquivo = f"{nome.replace(' ', '_')}_certificado.pdf"
+                zip_file.writestr(nome_arquivo, pdf_buffer.getvalue())
         
+        # Limpa arquivo temporário
+        if bg_path and os.path.exists(bg_path):
+            os.remove(bg_path)
+        
+        # Retorna o ZIP
         zip_buffer.seek(0)
-        
-        # Retornar estatísticas e download
-        stats = {
-            'total_participantes': len(resumo),
-            'total_horas': resumo['Horas_Total'].sum(),
-            'media_horas': resumo['Horas_Total'].mean()
-        }
-        
         return send_file(
             zip_buffer,
             mimetype='application/zip',
             as_attachment=True,
-            download_name='certificados.zip'
+            download_name='certificados_presenca.zip'
         )
         
     except Exception as e:
@@ -220,66 +259,65 @@ def gerar_certificados_formulario():
 
 @app.route('/gerar_certificados_personalizado', methods=['POST'])
 def gerar_certificados_personalizado():
+    """Gera certificados com texto personalizado"""
     try:
-        # Receber arquivo
-        file = request.files['arquivo']
-        if not file:
-            return jsonify({'error': 'Nenhum arquivo enviado'}), 400
-        
-        # Dados do formulário
-        texto_padrao = request.form.get('texto_certificado', '')
-        data_local = request.form.get('data_local', f"Belo Horizonte, {datetime.now().strftime('%d de %B de %Y')}")
+        # Recebe os arquivos e dados
+        arquivo = request.files['arquivo']
+        background = request.files.get('background')
         coluna_nome = request.form.get('coluna_nome', '')
+        texto_certificado = request.form['texto_certificado']
         coluna_texto = request.form.get('coluna_texto', '')
+        data_local = request.form.get('data_local', '')
         
-        # Processar imagem de fundo
-        background = None
-        if 'background' in request.files:
-            bg_file = request.files['background']
-            if bg_file and bg_file.filename:
-                background = Image.open(bg_file)
+        # Salva background temporariamente se fornecido
+        bg_path = None
+        if background:
+            bg_path = os.path.join(app.config['UPLOAD_FOLDER'], secure_filename(background.filename))
+            background.save(bg_path)
         
-        # Ler Excel
-        df = pd.read_excel(file)
+        # Carrega dados
+        df = pd.read_excel(arquivo)
         
-        # Validar colunas
-        if coluna_nome and coluna_nome not in df.columns:
-            return jsonify({'error': f'Coluna "{coluna_nome}" não encontrada'}), 400
+        # Determina a coluna de nomes
+        if coluna_nome:
+            nome_col = coluna_nome
+        else:
+            nome_col = df.columns[0]
         
-        # Se não especificou coluna, usar a primeira
-        if not coluna_nome:
-            coluna_nome = df.columns[0]
+        # Remove linhas vazias
+        df_limpo = df.dropna(subset=[nome_col])
         
-        # Gerar certificados
-        certificados = []
-        generator = CertificateGenerator(background)
-        
-        for _, row in df.iterrows():
-            nome = str(row[coluna_nome])
-            
-            # Usar texto personalizado da coluna ou texto padrão
-            if coluna_texto and coluna_texto in df.columns and pd.notna(row[coluna_texto]):
-                texto = str(row[coluna_texto])
-            else:
-                texto = texto_padrao.replace('{nome}', nome)
-            
-            # Gerar PDF
-            pdf_buffer = generator.generate_certificate(nome, texto, data_local)
-            
-            certificados.append({
-                'nome': nome,
-                'pdf': pdf_buffer.getvalue()
-            })
-        
-        # Criar arquivo ZIP
+        # Cria arquivo ZIP em memória
         zip_buffer = io.BytesIO()
+        
         with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
-            for cert in certificados:
-                nome_arquivo = f"{cert['nome'].replace(' ', '_')}_certificado.pdf"
-                zip_file.writestr(nome_arquivo, cert['pdf'])
+            for _, row in df_limpo.iterrows():
+                nome = str(row[nome_col]).strip()
+                
+                # Determina o texto do certificado
+                if coluna_texto and coluna_texto in df.columns:
+                    texto = str(row[coluna_texto])
+                else:
+                    texto = texto_certificado
+                
+                # Gera o certificado
+                pdf = gerar_certificado_personalizado(nome, texto, data_local, bg_path)
+                
+                # Salva em memória
+                pdf_buffer = io.BytesIO()
+                pdf_content = pdf.output()
+                pdf_buffer.write(pdf_content)
+                
+                # Adiciona ao ZIP
+                nome_arquivo = f"{nome.replace(' ', '_')}_certificado.pdf"
+                zip_file.writestr(nome_arquivo, pdf_buffer.getvalue())
         
+        # Limpa arquivo temporário
+        if bg_path and os.path.exists(bg_path):
+            os.remove(bg_path)
+        
+        # Retorna o ZIP
         zip_buffer.seek(0)
-        
         return send_file(
             zip_buffer,
             mimetype='application/zip',
@@ -290,28 +328,9 @@ def gerar_certificados_personalizado():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
-@app.route('/preview_excel', methods=['POST'])
-def preview_excel():
-    """Retorna preview das colunas do Excel"""
-    try:
-        file = request.files['arquivo']
-        if not file:
-            return jsonify({'error': 'Nenhum arquivo enviado'}), 400
-        
-        df = pd.read_excel(file)
-        
-        # Retornar informações sobre o arquivo
-        info = {
-            'colunas': list(df.columns),
-            'total_linhas': len(df),
-            'preview': df.head(5).to_dict('records')
-        }
-        
-        return jsonify(info)
-        
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
-
 if __name__ == '__main__':
+    import os
     port = int(os.environ.get('PORT', 5000))
     app.run(host='0.0.0.0', port=port, debug=False)
+
+    
