@@ -101,6 +101,7 @@
         
         input[type="text"],
         input[type="date"],
+        input[type="number"],
         textarea,
         select {
             width: 100%;
@@ -113,6 +114,7 @@
         
         input[type="text"]:focus,
         input[type="date"]:focus,
+        input[type="number"]:focus,
         textarea:focus,
         select:focus {
             outline: none;
@@ -180,6 +182,15 @@
             opacity: 0.6;
             cursor: not-allowed;
             transform: none;
+        }
+        
+        .btn-secondary {
+            background: #6c757d;
+            margin-left: 10px;
+        }
+        
+        .btn-secondary:hover {
+            box-shadow: 0 5px 20px rgba(108, 117, 125, 0.4);
         }
         
         .info-box {
@@ -285,6 +296,86 @@
             font-size: 14px;
             color: #0c5460;
         }
+        
+        .advanced-settings {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 8px;
+            margin-top: 20px;
+            border: 1px solid #dee2e6;
+        }
+        
+        .advanced-settings h4 {
+            color: #495057;
+            margin-bottom: 15px;
+            font-size: 1.1em;
+        }
+        
+        .row {
+            display: flex;
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+        
+        .col {
+            flex: 1;
+        }
+        
+        .range-input {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        input[type="range"] {
+            flex: 1;
+        }
+        
+        .range-value {
+            min-width: 50px;
+            text-align: center;
+            font-weight: 600;
+            color: #667eea;
+        }
+        
+        .preview-certificate {
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 8px;
+            padding: 20px;
+            margin-top: 20px;
+            display: none;
+        }
+        
+        .preview-certificate h4 {
+            margin-bottom: 15px;
+            color: #495057;
+        }
+        
+        .certificate-preview-content {
+            background: white;
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+            padding: 30px;
+            text-align: center;
+            font-family: 'Times New Roman', Times, serif;
+        }
+        
+        .toggle-advanced {
+            background: transparent;
+            border: 1px solid #667eea;
+            color: #667eea;
+            padding: 8px 16px;
+            border-radius: 6px;
+            cursor: pointer;
+            margin-bottom: 20px;
+            transition: all 0.3s ease;
+        }
+        
+        .toggle-advanced:hover {
+            background: #667eea;
+            color: white;
+        }
     </style>
 </head>
 <body>
@@ -312,7 +403,7 @@
                         <li>Faça upload do arquivo Excel com os registros de presença</li>
                         <li>Cada participação conta como 2 horas de atividade</li>
                         <li>O sistema agrupa automaticamente por participante</li>
-                        <li>Gera certificados com o total de horas acumuladas</li>
+                        <li>Personalize o texto e layout do certificado</li>
                     </ul>
                 </div>
                 
@@ -337,30 +428,107 @@
                         </div>
                     </div>
                     
-                    <div class="form-group">
-                        <label for="data-inicio">Data de Início *</label>
-                        <input type="date" id="data-inicio" name="data_inicio" required>
+                    <div class="row">
+                        <div class="col">
+                            <div class="form-group">
+                                <label for="data-inicio">Data de Início *</label>
+                                <input type="date" id="data-inicio" name="data_inicio" required>
+                            </div>
+                        </div>
+                        <div class="col">
+                            <div class="form-group">
+                                <label for="data-fim">Data de Término *</label>
+                                <input type="date" id="data-fim" name="data_fim" required>
+                            </div>
+                        </div>
                     </div>
                     
                     <div class="form-group">
-                        <label for="data-fim">Data de Término *</label>
-                        <input type="date" id="data-fim" name="data_fim" required>
+                        <label for="texto-abertura-form">Texto de Abertura</label>
+                        <input type="text" id="texto-abertura-form" name="texto_abertura" value="Certificamos que" placeholder="Ex: Certificamos que">
                     </div>
                     
                     <div class="form-group">
-                        <label for="local">Local</label>
-                        <input type="text" id="local" name="local" value="Belo Horizonte" placeholder="Ex: Belo Horizonte">
+                        <label for="texto-certificado-form">Texto do Certificado</label>
+                        <textarea id="texto-certificado-form" name="texto_certificado" placeholder="Use {nome}, {horas}, {periodo} como variáveis">Participou das atividades realizadas pela Associação Allos {periodo}, com carga horária total de {horas} horas.</textarea>
+                        <div class="placeholder-info">
+                            💡 Variáveis disponíveis: {nome} (nome do participante), {horas} (total de horas), {periodo} (período formatado)
+                        </div>
                     </div>
                     
-                    <div class="form-group">
-                        <label for="data-emissao">Data de Emissão</label>
-                        <input type="date" id="data-emissao" name="data_emissao">
+                    <button type="button" class="toggle-advanced" onclick="toggleAdvanced('formulario')">
+                        ⚙️ Configurações Avançadas
+                    </button>
+                    
+                    <div id="advanced-formulario" class="advanced-settings" style="display: none;">
+                        <h4>Configurações Avançadas</h4>
+                        
+                        <div class="row">
+                            <div class="col">
+                                <div class="form-group">
+                                    <label for="local">Local</label>
+                                    <input type="text" id="local" name="local" value="Belo Horizonte" placeholder="Ex: Belo Horizonte">
+                                </div>
+                            </div>
+                            <div class="col">
+                                <div class="form-group">
+                                    <label for="data-emissao">Data de Emissão</label>
+                                    <input type="date" id="data-emissao" name="data_emissao">
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="posicao-data-form">Posição da Data/Local (altura em mm)</label>
+                            <div class="range-input">
+                                <input type="range" id="posicao-data-form" name="posicao_data" min="150" max="250" value="200" oninput="updateRangeValue('posicao-data-form')">
+                                <span class="range-value" id="posicao-data-form-value">200</span>
+                            </div>
+                        </div>
+                        
+                        <div class="row">
+                            <div class="col">
+                                <div class="form-group">
+                                    <label for="titulo-tamanho-form">Tamanho do Título</label>
+                                    <input type="number" id="titulo-tamanho-form" name="titulo_tamanho" value="28" min="20" max="40">
+                                </div>
+                            </div>
+                            <div class="col">
+                                <div class="form-group">
+                                    <label for="nome-tamanho-form">Tamanho do Nome</label>
+                                    <input type="number" id="nome-tamanho-form" name="nome_tamanho" value="26" min="18" max="36">
+                                </div>
+                            </div>
+                            <div class="col">
+                                <div class="form-group">
+                                    <label for="texto-tamanho-form">Tamanho do Texto</label>
+                                    <input type="number" id="texto-tamanho-form" name="texto_tamanho" value="16" min="12" max="24">
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="margem-superior-form">Margem Superior (mm)</label>
+                            <div class="range-input">
+                                <input type="range" id="margem-superior-form" name="margem_superior" min="30" max="80" value="50" oninput="updateRangeValue('margem-superior-form')">
+                                <span class="range-value" id="margem-superior-form-value">50</span>
+                            </div>
+                        </div>
                     </div>
                     
                     <button type="submit" class="btn">
                         🎓 Gerar Certificados
                     </button>
+                    
+                    <button type="button" class="btn btn-secondary" onclick="previewCertificate('formulario')">
+                        👁️ Visualizar Exemplo
+                    </button>
                 </form>
+                
+                <div id="preview-cert-formulario" class="preview-certificate">
+                    <h4>Preview do Certificado</h4>
+                    <div class="certificate-preview-content" id="preview-content-formulario"></div>
+                </div>
             </div>
             
             <!-- Tab 2: Certificados Personalizados -->
@@ -369,8 +537,8 @@
                     <h3>✏️ Como funciona:</h3>
                     <ul>
                         <li>Faça upload de um arquivo Excel com os nomes</li>
-                        <li>Defina o texto do certificado para todos</li>
-                        <li>Personalize data e local de emissão</li>
+                        <li>Defina o texto do certificado com total liberdade</li>
+                        <li>Personalize todos os aspectos do layout</li>
                         <li>Gera um certificado para cada linha do Excel</li>
                     </ul>
                 </div>
@@ -399,10 +567,15 @@
                     </div>
                     
                     <div class="form-group">
+                        <label for="texto-abertura-pers">Texto de Abertura</label>
+                        <input type="text" id="texto-abertura-pers" name="texto_abertura" value="Certificamos que" placeholder="Ex: Certificamos que">
+                    </div>
+                    
+                    <div class="form-group">
                         <label for="texto-certificado">Texto do Certificado *</label>
                         <textarea id="texto-certificado" name="texto_certificado" required placeholder="Ex: participou do workshop realizado no dia...">{nome} participou do evento realizado pela Associação Allos, demonstrando excelente desempenho e comprometimento com as atividades propostas.</textarea>
                         <div class="placeholder-info">
-                            💡 Use {nome} para inserir o nome do participante automaticamente
+                            💡 Use {nome} para inserir o nome do participante automaticamente. Você pode usar outras variáveis de colunas do Excel usando {nome_da_coluna}
                         </div>
                     </div>
                     
@@ -421,10 +594,69 @@
                         <input type="text" id="data-local" name="data_local" placeholder="Ex: Belo Horizonte, 21 de julho de 2025">
                     </div>
                     
+                    <button type="button" class="toggle-advanced" onclick="toggleAdvanced('personalizado')">
+                        ⚙️ Configurações Avançadas
+                    </button>
+                    
+                    <div id="advanced-personalizado" class="advanced-settings" style="display: none;">
+                        <h4>Configurações Avançadas</h4>
+                        
+                        <div class="form-group">
+                            <label for="posicao-data-pers">Posição da Data/Local (altura em mm)</label>
+                            <div class="range-input">
+                                <input type="range" id="posicao-data-pers" name="posicao_data" min="150" max="250" value="200" oninput="updateRangeValue('posicao-data-pers')">
+                                <span class="range-value" id="posicao-data-pers-value">200</span>
+                            </div>
+                        </div>
+                        
+                        <div class="row">
+                            <div class="col">
+                                <div class="form-group">
+                                    <label for="titulo-tamanho-pers">Tamanho do Título</label>
+                                    <input type="number" id="titulo-tamanho-pers" name="titulo_tamanho" value="28" min="20" max="40">
+                                </div>
+                            </div>
+                            <div class="col">
+                                <div class="form-group">
+                                    <label for="nome-tamanho-pers">Tamanho do Nome</label>
+                                    <input type="number" id="nome-tamanho-pers" name="nome_tamanho" value="26" min="18" max="36">
+                                </div>
+                            </div>
+                            <div class="col">
+                                <div class="form-group">
+                                    <label for="texto-tamanho-pers">Tamanho do Texto</label>
+                                    <input type="number" id="texto-tamanho-pers" name="texto_tamanho" value="16" min="12" max="24">
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="margem-superior-pers">Margem Superior (mm)</label>
+                            <div class="range-input">
+                                <input type="range" id="margem-superior-pers" name="margem_superior" min="30" max="80" value="50" oninput="updateRangeValue('margem-superior-pers')">
+                                <span class="range-value" id="margem-superior-pers-value">50</span>
+                            </div>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="titulo-certificado">Título do Certificado</label>
+                            <input type="text" id="titulo-certificado" name="titulo_certificado" value="CERTIFICADO" placeholder="Ex: CERTIFICADO DE PARTICIPAÇÃO">
+                        </div>
+                    </div>
+                    
                     <button type="submit" class="btn">
                         🎓 Gerar Certificados Personalizados
                     </button>
+                    
+                    <button type="button" class="btn btn-secondary" onclick="previewCertificate('personalizado')">
+                        👁️ Visualizar Exemplo
+                    </button>
                 </form>
+                
+                <div id="preview-cert-personalizado" class="preview-certificate">
+                    <h4>Preview do Certificado</h4>
+                    <div class="certificate-preview-content" id="preview-content-personalizado"></div>
+                </div>
             </div>
             
             <div id="loading" class="loading">
@@ -449,6 +681,63 @@
                 document.querySelector('.tab:last-child').classList.add('active');
                 document.getElementById('personalizado-tab').classList.add('active');
             }
+        }
+        
+        // Toggle configurações avançadas
+        function toggleAdvanced(type) {
+            const advanced = document.getElementById(`advanced-${type}`);
+            advanced.style.display = advanced.style.display === 'none' ? 'block' : 'none';
+        }
+        
+        // Atualizar valor do range
+        function updateRangeValue(id) {
+            const range = document.getElementById(id);
+            const value = document.getElementById(`${id}-value`);
+            value.textContent = range.value;
+        }
+        
+        // Preview do certificado
+        function previewCertificate(type) {
+            const preview = document.getElementById(`preview-cert-${type}`);
+            const content = document.getElementById(`preview-content-${type}`);
+            
+            if (type === 'formulario') {
+                const titulo = document.getElementById('titulo-tamanho-form').value || '28';
+                const nome = document.getElementById('nome-tamanho-form').value || '26';
+                const texto = document.getElementById('texto-tamanho-form').value || '16';
+                const textoAbertura = document.getElementById('texto-abertura-form').value || 'Certificamos que';
+                const textoCert = document.getElementById('texto-certificado-form').value || 'Participou das atividades realizadas pela Associação Allos no período de 01/01/2025 a 31/01/2025, com carga horária total de 10 horas.';
+                
+                content.innerHTML = `
+                    <h1 style="font-size: ${titulo}px; margin-bottom: 30px;">CERTIFICADO</h1>
+                    <p style="font-size: 18px; margin-bottom: 20px;">${textoAbertura}</p>
+                    <h2 style="font-size: ${nome}px; margin-bottom: 30px; font-weight: bold;">João da Silva</h2>
+                    <p style="font-size: ${texto}px; line-height: 1.6; max-width: 600px; margin: 0 auto;">
+                        ${textoCert.replace('{nome}', 'João da Silva').replace('{horas}', '10').replace('{periodo}', 'no período de 01/01/2025 a 31/01/2025')}
+                    </p>
+                    <p style="margin-top: 50px; font-size: 14px; text-align: right;">Belo Horizonte, ${new Date().toLocaleDateString('pt-BR')}</p>
+                `;
+            } else {
+                const titulo = document.getElementById('titulo-tamanho-pers').value || '28';
+                const nome = document.getElementById('nome-tamanho-pers').value || '26';
+                const texto = document.getElementById('texto-tamanho-pers').value || '16';
+                const tituloText = document.getElementById('titulo-certificado').value || 'CERTIFICADO';
+                const textoAbertura = document.getElementById('texto-abertura-pers').value || 'Certificamos que';
+                const textoCert = document.getElementById('texto-certificado').value || '{nome} participou do evento realizado pela Associação Allos.';
+                const dataLocal = document.getElementById('data-local').value || 'Belo Horizonte, ' + new Date().toLocaleDateString('pt-BR');
+                
+                content.innerHTML = `
+                    <h1 style="font-size: ${titulo}px; margin-bottom: 30px;">${tituloText}</h1>
+                    <p style="font-size: 18px; margin-bottom: 20px;">${textoAbertura}</p>
+                    <h2 style="font-size: ${nome}px; margin-bottom: 30px; font-weight: bold;">Maria Santos</h2>
+                    <p style="font-size: ${texto}px; line-height: 1.6; max-width: 600px; margin: 0 auto;">
+                        ${textoCert.replace('{nome}', 'Maria Santos')}
+                    </p>
+                    <p style="margin-top: 50px; font-size: 14px; text-align: right;">${dataLocal}</p>
+                `;
+            }
+            
+            preview.style.display = 'block';
         }
         
         // Atualizar label do arquivo

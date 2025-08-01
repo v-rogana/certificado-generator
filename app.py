@@ -83,7 +83,11 @@ def processar_participacoes(df):
     
     return resumo
 
-def gerar_certificado_presenca(nome, horas, data_inicio, data_fim, local, data_emissao, bg_path=None):
+def gerar_certificado_presenca(nome, horas, data_inicio, data_fim, local, data_emissao, 
+                             bg_path=None, texto_abertura="Certificamos que", 
+                             texto_certificado=None, posicao_data=200,
+                             titulo_tamanho=28, nome_tamanho=26, texto_tamanho=16,
+                             margem_superior=50):
     """Gera certificado para participação com horas acumuladas"""
     
     pdf = PDFCustom(bg_image_path=bg_path)
@@ -91,38 +95,51 @@ def gerar_certificado_presenca(nome, horas, data_inicio, data_fim, local, data_e
     pdf.add_page()
     
     # Título
-    pdf.set_y(50)
-    pdf.set_font("Times", "", 28)
+    pdf.set_y(margem_superior)
+    pdf.set_font("Times", "", titulo_tamanho)
     pdf.cell(0, 15, "CERTIFICADO", align="C", ln=True)
     
-    # Certificamos que
+    # Texto de abertura
     pdf.ln(10)
     pdf.set_font("Times", "", 18)
-    pdf.cell(0, 10, "Certificamos que", align="C", ln=True)
+    pdf.cell(0, 10, texto_abertura, align="C", ln=True)
     
     # Nome
     pdf.ln(5)
-    pdf.set_font("Times", "B", 26)
+    pdf.set_font("Times", "B", nome_tamanho)
     pdf.cell(0, 15, nome, align="C", ln=True)
     
     # Texto do certificado
     pdf.ln(10)
-    pdf.set_font("Times", "", 16)
+    pdf.set_font("Times", "", texto_tamanho)
     
+    # Prepara o texto com substituições
     periodo = f"no período de {data_inicio} a {data_fim}"
-    texto = f"Participou das atividades realizadas pela Associação Allos {periodo}, "
-    texto += f"com carga horária total de {int(horas)} horas."
+    
+    if texto_certificado:
+        texto = texto_certificado
+        texto = texto.replace("{nome}", nome)
+        texto = texto.replace("{horas}", str(int(horas)))
+        texto = texto.replace("{periodo}", periodo)
+    else:
+        texto = f"Participou das atividades realizadas pela Associação Allos {periodo}, "
+        texto += f"com carga horária total de {int(horas)} horas."
     
     pdf.multi_cell(0, 10, texto, align="C")
     
-    # Local e data
-    pdf.ln(20)
+    # Local e data - com posição customizável
+    pdf.set_y(posicao_data)
     pdf.set_font("Times", "", 14)
     pdf.cell(0, 10, f"{local}, {data_emissao}", align="R")
     
     return pdf
 
-def gerar_certificado_personalizado(nome, texto, data_local, bg_path=None):
+def gerar_certificado_personalizado(nome, texto, data_local, bg_path=None, 
+                                  texto_abertura="Certificamos que",
+                                  posicao_data=200, titulo_tamanho=28, 
+                                  nome_tamanho=26, texto_tamanho=16,
+                                  margem_superior=50, titulo_certificado="CERTIFICADO",
+                                  row_data=None):
     """Gera certificado com texto personalizado"""
     
     pdf = PDFCustom(bg_image_path=bg_path)
@@ -130,31 +147,39 @@ def gerar_certificado_personalizado(nome, texto, data_local, bg_path=None):
     pdf.add_page()
     
     # Título
-    pdf.set_y(50)
-    pdf.set_font("Times", "", 28)
-    pdf.cell(0, 15, "CERTIFICADO", align="C", ln=True)
+    pdf.set_y(margem_superior)
+    pdf.set_font("Times", "", titulo_tamanho)
+    pdf.cell(0, 15, titulo_certificado, align="C", ln=True)
     
-    # Certificamos que
+    # Texto de abertura
     pdf.ln(10)
     pdf.set_font("Times", "", 18)
-    pdf.cell(0, 10, "Certificamos que", align="C", ln=True)
+    pdf.cell(0, 10, texto_abertura, align="C", ln=True)
     
     # Nome
     pdf.ln(5)
-    pdf.set_font("Times", "B", 26)
+    pdf.set_font("Times", "B", nome_tamanho)
     pdf.cell(0, 15, nome, align="C", ln=True)
     
     # Texto personalizado
     pdf.ln(10)
-    pdf.set_font("Times", "", 16)
+    pdf.set_font("Times", "", texto_tamanho)
     
-    # Substitui {nome} no texto
+    # Substitui {nome} e outras variáveis no texto
     texto_final = texto.replace("{nome}", nome)
+    
+    # Se row_data foi fornecido, substitui outras variáveis
+    if row_data:
+        for col, valor in row_data.items():
+            placeholder = "{" + col + "}"
+            if placeholder in texto_final:
+                texto_final = texto_final.replace(placeholder, str(valor))
+    
     pdf.multi_cell(0, 10, texto_final, align="C")
     
-    # Data e local
+    # Data e local - com posição customizável
     if data_local:
-        pdf.ln(20)
+        pdf.set_y(posicao_data)
         pdf.set_font("Times", "", 14)
         pdf.cell(0, 10, data_local, align="R")
     
@@ -194,6 +219,15 @@ def gerar_certificados_formulario():
         local = request.form.get('local', 'Belo Horizonte')
         data_emissao = request.form.get('data_emissao')
         
+        # Novos parâmetros de personalização
+        texto_abertura = request.form.get('texto_abertura', 'Certificamos que')
+        texto_certificado = request.form.get('texto_certificado', '')
+        posicao_data = int(request.form.get('posicao_data', 200))
+        titulo_tamanho = int(request.form.get('titulo_tamanho', 28))
+        nome_tamanho = int(request.form.get('nome_tamanho', 26))
+        texto_tamanho = int(request.form.get('texto_tamanho', 16))
+        margem_superior = int(request.form.get('margem_superior', 50))
+        
         # Formata datas
         data_inicio_fmt = datetime.strptime(data_inicio, '%Y-%m-%d').strftime('%d/%m/%Y')
         data_fim_fmt = datetime.strptime(data_fim, '%Y-%m-%d').strftime('%d/%m/%Y')
@@ -226,10 +260,17 @@ def gerar_certificados_formulario():
                 nome = participante['Nome']
                 horas = participante['Horas_Total']
                 
-                # Gera o certificado
+                # Gera o certificado com as personalizações
                 pdf = gerar_certificado_presenca(
                     nome, horas, data_inicio_fmt, data_fim_fmt, 
-                    local, data_emissao_texto, bg_path
+                    local, data_emissao_texto, bg_path,
+                    texto_abertura=texto_abertura,
+                    texto_certificado=texto_certificado,
+                    posicao_data=posicao_data,
+                    titulo_tamanho=titulo_tamanho,
+                    nome_tamanho=nome_tamanho,
+                    texto_tamanho=texto_tamanho,
+                    margem_superior=margem_superior
                 )
                 
                 # Salva em memória
@@ -266,8 +307,16 @@ def gerar_certificados_personalizado():
         background = request.files.get('background')
         coluna_nome = request.form.get('coluna_nome', '')
         texto_certificado = request.form['texto_certificado']
-        coluna_texto = request.form.get('coluna_texto', '')
         data_local = request.form.get('data_local', '')
+        
+        # Novos parâmetros de personalização
+        texto_abertura = request.form.get('texto_abertura', 'Certificamos que')
+        posicao_data = int(request.form.get('posicao_data', 200))
+        titulo_tamanho = int(request.form.get('titulo_tamanho', 28))
+        nome_tamanho = int(request.form.get('nome_tamanho', 26))
+        texto_tamanho = int(request.form.get('texto_tamanho', 16))
+        margem_superior = int(request.form.get('margem_superior', 50))
+        titulo_certificado = request.form.get('titulo_certificado', 'CERTIFICADO')
         
         # Salva background temporariamente se fornecido
         bg_path = None
@@ -294,14 +343,21 @@ def gerar_certificados_personalizado():
             for _, row in df_limpo.iterrows():
                 nome = str(row[nome_col]).strip()
                 
-                # Determina o texto do certificado
-                if coluna_texto and coluna_texto in df.columns:
-                    texto = str(row[coluna_texto])
-                else:
-                    texto = texto_certificado
+                # Converte a linha para dicionário para substituições
+                row_dict = row.to_dict()
                 
-                # Gera o certificado
-                pdf = gerar_certificado_personalizado(nome, texto, data_local, bg_path)
+                # Gera o certificado com todas as personalizações
+                pdf = gerar_certificado_personalizado(
+                    nome, texto_certificado, data_local, bg_path,
+                    texto_abertura=texto_abertura,
+                    posicao_data=posicao_data,
+                    titulo_tamanho=titulo_tamanho,
+                    nome_tamanho=nome_tamanho,
+                    texto_tamanho=texto_tamanho,
+                    margem_superior=margem_superior,
+                    titulo_certificado=titulo_certificado,
+                    row_data=row_dict
+                )
                 
                 # Salva em memória
                 pdf_buffer = io.BytesIO()
@@ -329,8 +385,5 @@ def gerar_certificados_personalizado():
         return jsonify({'error': str(e)}), 500
 
 if __name__ == '__main__':
-    import os
     port = int(os.environ.get('PORT', 5000))
     app.run(host='0.0.0.0', port=port, debug=False)
-
-    
